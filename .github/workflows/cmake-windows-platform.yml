@@ -3,12 +3,10 @@ name: CMake-Windows
 on:
   workflow_dispatch:
     inputs:
-      logLevel:
-        description: 'Log level'
+      ref:
+        description: 'Tag or branch to build'
         required: true
-        default: 'warning'
-      tags:
-        description: 'Windows'
+        default: 'v3.0.2'
 
 jobs:
   build:
@@ -20,7 +18,7 @@ jobs:
       - uses: actions/checkout@master
         with:
           repository: DirtBagXon/hypseus-singe
-          ref: master
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - uses: msys2/setup-msys2@v2
@@ -55,28 +53,58 @@ jobs:
           sed -i \
           's/set(VER_TAG "${VER_TAG}-dirty")/set(VER_TAG "${VER_TAG}-${{ env.COMMIT_SHORT_SHA }}")/' \
           src/CMakeLists.txt
-          mkdir build
-          cd build
-          cmake -G "MSYS Makefiles" ../src
+          # Console build (same as upstream)
+          cmake -G "MSYS Makefiles" -S src -B build
+          # Windows subsystem build: no console window
+          cmake -G "MSYS Makefiles" -S src -B build-noconsole -DCMAKE_EXE_LINKER_FLAGS="-mwindows"
 
       - name: Build
         run: |
-          cd build
-          make
+          make -C build
+          make -C build-noconsole
 
       - name: Add DLLs
-        working-directory: build
         run: |
-          ntldd -R hypseus.exe |
-            awk '/mingw64/ {print $3}' |
-            while read -r dll; do
-              cp -u "$dll" .
-            done
+          for dir in build build-noconsole; do
+            (
+              cd "$dir"
+              ntldd -R hypseus.exe |
+                awk '/mingw64/ {print $3}' |
+                while read -r dll; do
+                  cp -u "$dll" .
+                done
+            )
+          done
 
-      - name: Upload artifact
+      - name: Add data folders
+        run: |
+          for dir in build build-noconsole; do
+            cp -r fonts pics sound midi "$dir/"
+            cp doc/hypinput.ini "$dir/"
+          done
+
+      - name: Upload console build
         uses: actions/upload-artifact@v6
         with:
-          name: hypseus-windows
+          name: hypseus-windows-console
           path: |
             build/hypseus.exe
             build/*.dll
+            build/fonts
+            build/pics
+            build/sound
+            build/midi
+            build/hypinput.ini
+
+      - name: Upload no-console build
+        uses: actions/upload-artifact@v6
+        with:
+          name: hypseus-windows-noconsole
+          path: |
+            build-noconsole/hypseus.exe
+            build-noconsole/*.dll
+            build-noconsole/fonts
+            build-noconsole/pics
+            build-noconsole/sound
+            build-noconsole/midi
+            build-noconsole/hypinput.ini
