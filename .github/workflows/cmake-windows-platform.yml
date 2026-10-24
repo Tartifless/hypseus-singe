@@ -53,6 +53,11 @@ jobs:
           sed -i \
           's/set(VER_TAG "${VER_TAG}-dirty")/set(VER_TAG "${VER_TAG}-${{ env.COMMIT_SHORT_SHA }}")/' \
           src/CMakeLists.txt
+          # libmpeg2 SSE2/MMX inline asm clobbers XMM6-15 (callee-saved on Win64) without declaring them:
+          # corrupted macroblocks (green blocks). Use the C IDCT/motion compensation instead.
+          sed -i 's/--disable-sdl/--disable-sdl\n\t\t--disable-accel-detect/' \
+          src/cmake/modules/BuildLibMPEG2.cmake
+          grep -n 'disable-accel-detect' src/cmake/modules/BuildLibMPEG2.cmake
           # Console build (same as upstream)
           cmake -G "MSYS Makefiles" -S src -B build
           # Windows subsystem build: no console window
